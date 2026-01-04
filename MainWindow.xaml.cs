@@ -11,12 +11,14 @@ using System.Globalization;
 using Microsoft.Win32;
 using DepoEnvanterApp.Data;
 using DepoEnvanterApp.Models;
+using DepoEnvanterApp.Repositories;
 
 namespace DepoEnvanterApp
 {
     public partial class MainWindow : Window
     {
-        private readonly AppDbContext _db = new AppDbContext();
+        // Repository Pattern kullanımı (Unit of Work ile)
+        private readonly IUnitOfWork _unitOfWork;
         private string _secilenResimYolu = "envanter.ico";
         private bool _isMenuOpen = true;
         private bool _isEditMode = false;
@@ -31,6 +33,10 @@ namespace DepoEnvanterApp
             InitializeComponent();
             lblAktifKullanici.Text = aktifKullanici;
             this.DataContext = this;
+
+            // Unit of Work başlat
+            _unitOfWork = new UnitOfWork(new AppDbContext());
+            
             Listele();
         }
 
@@ -38,7 +44,8 @@ namespace DepoEnvanterApp
         {
             try
             {
-                var liste = _db.Urunler.ToList();
+                // Repository üzerinden veri çekme
+                var liste = _unitOfWork.Urunler.GetAll();
                 UrunlerListesi.Clear();
                 foreach (var urun in liste)
                 {
@@ -94,7 +101,8 @@ namespace DepoEnvanterApp
 
             if (_suAnkiDuzenlenenUrun != null)
             {
-                var dbUrun = _db.Urunler.Find(_suAnkiDuzenlenenUrun.Id);
+                // Repository üzerinden ürünü bul
+                var dbUrun = _unitOfWork.Urunler.GetById(_suAnkiDuzenlenenUrun.Id);
                 if (dbUrun != null)
                 {
                     dbUrun.UrunAdi = _suAnkiDuzenlenenUrun.UrunAdi;
@@ -110,7 +118,10 @@ namespace DepoEnvanterApp
                     string hamKategori = _suAnkiDuzenlenenUrun.Kategori ?? "Diğer";
                     dbUrun.Kategori = hamKategori.Replace("System.Windows.Controls.ComboBoxItem: ", "").Trim();
 
-                    _db.SaveChanges();
+                    // Repository pattern ile güncelleme
+                    _unitOfWork.Urunler.Update(dbUrun);
+                    _unitOfWork.SaveChanges();
+                    
                     MessageBox.Show("Ürün başarıyla güncellendi.", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
@@ -159,8 +170,10 @@ namespace DepoEnvanterApp
                 Kategori = (cmbKategori.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Diğer"
             };
 
-            _db.Urunler.Add(yeniUrun);
-            _db.SaveChanges();
+            // Repository pattern ile ekleme
+            _unitOfWork.Urunler.Add(yeniUrun);
+            _unitOfWork.SaveChanges();
+            
             Listele();
             FormuTemizle();
         }
@@ -212,8 +225,9 @@ namespace DepoEnvanterApp
                 if (MessageBox.Show($"{s.UrunAdi} isimli ürünü silmek istediğinize emin misiniz?", "Silme Onayı",
                     MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
                 {
-                    _db.Urunler.Remove(s);
-                    _db.SaveChanges();
+                    // Repository pattern ile silme
+                    _unitOfWork.Urunler.Remove(s);
+                    _unitOfWork.SaveChanges();
                     Listele();
                 }
             }
@@ -222,7 +236,12 @@ namespace DepoEnvanterApp
         private void TxtArama_TextChanged(object sender, TextChangedEventArgs e)
         {
             string aranan = txtArama.Text.ToLower().Trim();
-            var filtrelenmis = _db.Urunler.Where(x => x.UrunAdi.ToLower().Contains(aranan) || x.Barkod.Contains(aranan)).ToList();
+            
+            // Repository pattern ile filtreleme
+            var filtrelenmis = _unitOfWork.Urunler.Find(x => 
+                x.UrunAdi.ToLower().Contains(aranan) || 
+                x.Barkod.Contains(aranan));
+            
             dgUrunler.ItemsSource = filtrelenmis;
             dgGenelUrunler.ItemsSource = filtrelenmis;
         }

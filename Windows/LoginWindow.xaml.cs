@@ -3,17 +3,21 @@ using System.Linq;
 using System.Windows;
 using DepoEnvanterApp.Data; // Veritabanı bağlantı sınıfı
 using DepoEnvanterApp.Models; // Kullanici modeli
+using DepoEnvanterApp.Repositories; // Repository pattern
 
 namespace DepoEnvanterApp
 {
     public partial class LoginWindow : Window
     {
-        // Veritabanı işlemlerini yönetecek olan nesnemiz
-        private readonly AppDbContext _db = new AppDbContext();
+        // Repository Pattern kullanımı (Unit of Work ile)
+        private readonly IUnitOfWork _unitOfWork;
 
         public LoginWindow()
         {
             InitializeComponent();
+            
+            // Unit of Work başlat
+            _unitOfWork = new UnitOfWork(new AppDbContext());
         }
 
         // --- GİRİŞ YAPMA MANTIĞI ---
@@ -31,8 +35,8 @@ namespace DepoEnvanterApp
                     return;
                 }
 
-                // LINQ ile kullanıcıyı doğrulayalım
-                var user = _db.Kullanicilar.FirstOrDefault(x =>
+                // Repository pattern ile kullanıcıyı doğrula
+                var user = _unitOfWork.Kullanicilar.FirstOrDefault(x =>
                     x.KullaniciAdi == girilenKullanici &&
                     x.Sifre == girilenSifre);
 
@@ -69,8 +73,8 @@ namespace DepoEnvanterApp
                     return;
                 }
 
-                // Kullanıcı adı daha önce alınmış mı?
-                var varMi = _db.Kullanicilar.Any(x => x.KullaniciAdi == txtUser.Text);
+                // Repository pattern ile kullanıcı adı kontrolü
+                var varMi = _unitOfWork.Kullanicilar.Any(x => x.KullaniciAdi == txtUser.Text);
                 if (varMi)
                 {
                     lblDurum.Text = "Bu kullanıcı adı zaten alınmış!";
@@ -84,8 +88,9 @@ namespace DepoEnvanterApp
                     Sifre = txtPass.Password
                 };
 
-                _db.Kullanicilar.Add(yeniKullanici);
-                _db.SaveChanges(); // SQL'e kaydet
+                // Repository pattern ile kaydetme
+                _unitOfWork.Kullanicilar.Add(yeniKullanici);
+                _unitOfWork.SaveChanges(); // SQL'e kaydet
 
                 MessageBox.Show("Kayıt başarıyla oluşturuldu! Artık giriş yapabilirsiniz.");
 
