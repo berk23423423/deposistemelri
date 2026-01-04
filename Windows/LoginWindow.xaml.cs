@@ -81,6 +81,9 @@ namespace DepoEnvanterApp
                     return;
                 }
 
+                // Transaction başlat - Güvenli kullanıcı kaydı için
+                _unitOfWork.BeginTransaction();
+
                 // Yeni kullanıcıyı oluştur
                 var yeniKullanici = new Kullanici
                 {
@@ -90,9 +93,11 @@ namespace DepoEnvanterApp
 
                 // Repository pattern ile kaydetme
                 _unitOfWork.Kullanicilar.Add(yeniKullanici);
-                _unitOfWork.SaveChanges(); // SQL'e kaydet
+                
+                // Transaction'ı commit et
+                _unitOfWork.Commit();
 
-                MessageBox.Show("Kayıt başarıyla oluşturuldu! Artık giriş yapabilirsiniz.");
+                MessageBox.Show("Kayıt başarıyla oluşturuldu! Artık giriş yapabilirsiniz.", "Başarılı", MessageBoxButton.OK, MessageBoxImage.Information);
 
                 // Giriş kutularını temizle
                 txtUser.Text = "";
@@ -101,7 +106,11 @@ namespace DepoEnvanterApp
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Kayıt hatası: " + ex.Message);
+                // Hata oluşursa rollback yap
+                _unitOfWork.Rollback();
+                
+                lblDurum.Text = "Kayıt başarısız!";
+                MessageBox.Show($"Kayıt hatası!\n\nHata: {ex.Message}", "Hata", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

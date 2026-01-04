@@ -101,10 +101,18 @@ namespace DepoEnvanterApp
 
             if (_suAnkiDuzenlenenUrun != null)
             {
-                // Repository üzerinden ürünü bul
-                var dbUrun = _unitOfWork.Urunler.GetById(_suAnkiDuzenlenenUrun.Id);
-                if (dbUrun != null)
+                try
                 {
+                    // Transaction başlat - Güvenli güncelleme için
+                    _unitOfWork.BeginTransaction();
+
+                    // Repository üzerinden ürünü bul
+                    var dbUrun = _unitOfWork.Urunler.GetById(_suAnkiDuzenlenenUrun.Id);
+                    if (dbUrun == null)
+                    {
+                        throw new Exception("Ürün veritabanında bulunamadı!");
+                    }
+
                     dbUrun.UrunAdi = _suAnkiDuzenlenenUrun.UrunAdi;
                     dbUrun.StokAdedi = _suAnkiDuzenlenenUrun.StokAdedi;
 
@@ -120,13 +128,41 @@ namespace DepoEnvanterApp
 
                     // Repository pattern ile güncelleme
                     _unitOfWork.Urunler.Update(dbUrun);
-                    _unitOfWork.SaveChanges();
+                    
+                    // Transaction'ı commit et
+                    _unitOfWork.Commit();
                     
                     MessageBox.Show("Ürün başarıyla güncellendi.", "Bilgi", MessageBoxButton.OK, MessageBoxImage.Information);
+                    
+                    KilitleriAc();
+                    Listele();
+                }
+                catch (Exception ex)
+                {
+                    // Hata oluşursa rollback yap
+                    _unitOfWork.Rollback();
+                    
+                    MessageBox.Show(
+                        $"Ürün güncellenirken bir hata oluştu!\n\nHata: {ex.Message}", 
+                        "Hata", 
+                        MessageBoxButton.OK, 
+                        MessageBoxImage.Error);
+                    
+                    // Düzenleme modunu kapat ve eski verileri geri yükle
+                    if (_suAnkiDuzenlenenUrun != null && _yedekUrun != null)
+                    {
+                        _suAnkiDuzenlenenUrun.UrunAdi = _yedekUrun.UrunAdi;
+                        _suAnkiDuzenlenenUrun.StokAdedi = _yedekUrun.StokAdedi;
+                        _suAnkiDuzenlenenUrun.Fiyat = _yedekUrun.Fiyat;
+                        _suAnkiDuzenlenenUrun.Barkod = _yedekUrun.Barkod;
+                        _suAnkiDuzenlenenUrun.ResimYolu = _yedekUrun.ResimYolu;
+                        _suAnkiDuzenlenenUrun.Kategori = _yedekUrun.Kategori;
+                    }
+                    
+                    KilitleriAc();
+                    dgUrunler.Items.Refresh();
                 }
             }
-            KilitleriAc();
-            Listele();
         }
 
         // NOKTA VE RAKAM KONTROLÜ
@@ -156,26 +192,47 @@ namespace DepoEnvanterApp
                 return;
             }
 
-            // NOKTA KULLANIMINI KURUS OLARAK ALGILATMA (Invariant Culture)
-            // Bu sayede 10.50 yazıldığında sistem dili ne olursa olsun 'On lira elli kuruş' olarak okunur.
-            double.TryParse(txtFiyat.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out double fiyatSonuc);
-
-            var yeniUrun = new Urun
+            try
             {
-                UrunAdi = txtUrunAdi.Text,
-                StokAdedi = int.TryParse(txtStok.Text, out int s) ? s : 0,
-                Fiyat = fiyatSonuc,
-                Barkod = txtBarkod.Text,
-                ResimYolu = string.IsNullOrEmpty(_secilenResimYolu) ? "envanter.ico" : _secilenResimYolu,
-                Kategori = (cmbKategori.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Diğer"
-            };
+                // Transaction başlat - Güvenli ekleme için
+                _unitOfWork.BeginTransaction();
 
-            // Repository pattern ile ekleme
-            _unitOfWork.Urunler.Add(yeniUrun);
-            _unitOfWork.SaveChanges();
-            
-            Listele();
-            FormuTemizle();
+                // NOKTA KULLANIMINI KURUS OLARAK ALGILATMA (Invariant Culture)
+                // Bu sayede 10.50 yazıldığında sistem dili ne olursa olsun 'On lira elli kuruş' olarak okunur.
+                double.TryParse(txtFiyat.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out double fiyatSonuc);
+
+                var yeniUrun = new Urun
+                {
+                    UrunAdi = txtUrunAdi.Text,
+                    StokAdedi = int.TryParse(txtStok.Text, out int s) ? s : 0,
+                    Fiyat = fiyatSonuc,
+                    Barkod = txtBarkod.Text,
+                    ResimYolu = string.IsNullOrEmpty(_secilenResimYolu) ? "envanter.ico" : _secilenResimYolu,
+                    Kategori = (cmbKategori.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Diğer"
+                };
+
+                // Repository pattern ile ekleme
+                _unitOfWork.Urunler.Add(yeniUrun);
+                
+                // Transaction'ı commit et
+                _unitOfWork.Commit();
+                
+                MessageBox.Show("Ürün başarıyla eklendi!", "Başarılı", MessageBoxButton.OK, MessageBoxImage.Information);
+                
+                Listele();
+                FormuTemizle();
+            }
+            catch (Exception ex)
+            {
+                // Hata oluşursa rollback yap
+                _unitOfWork.Rollback();
+                
+                MessageBox.Show(
+                    $"Ürün eklenirken bir hata oluştu!\n\nHata: {ex.Message}", 
+                    "Hata", 
+                    MessageBoxButton.OK, 
+                    MessageBoxImage.Error);
+            }
         }
 
         private void FormuTemizle()
@@ -225,10 +282,32 @@ namespace DepoEnvanterApp
                 if (MessageBox.Show($"{s.UrunAdi} isimli ürünü silmek istediğinize emin misiniz?", "Silme Onayı",
                     MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
                 {
-                    // Repository pattern ile silme
-                    _unitOfWork.Urunler.Remove(s);
-                    _unitOfWork.SaveChanges();
-                    Listele();
+                    try
+                    {
+                        // Transaction başlat - Güvenli silme için
+                        _unitOfWork.BeginTransaction();
+                        
+                        // Repository pattern ile silme
+                        _unitOfWork.Urunler.Remove(s);
+                        
+                        // Transaction'ı commit et
+                        _unitOfWork.Commit();
+                        
+                        MessageBox.Show($"{s.UrunAdi} başarıyla silindi!", "Başarılı", MessageBoxButton.OK, MessageBoxImage.Information);
+                        
+                        Listele();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Hata oluşursa rollback yap
+                        _unitOfWork.Rollback();
+                        
+                        MessageBox.Show(
+                            $"Ürün silinirken bir hata oluştu!\n\nHata: {ex.Message}", 
+                            "Hata", 
+                            MessageBoxButton.OK, 
+                            MessageBoxImage.Error);
+                    }
                 }
             }
         }
